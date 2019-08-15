@@ -1,0 +1,129 @@
+---
+# files: roles/ldap_client/tasks/centos7.yml
+
+- name: SELinux Disable
+  selinux: state=disabled
+
+- name: install openldap client
+  become: yes
+  yum:
+    name: "{{item}}"
+    state: present
+  with_items:
+    - openldap-clients
+    - authconfig
+    - nss-pam-ldapd
+    - openssh-ldap
+    - sssd
+    - sssd-client
+    - sssd-ldap
+    - oddjob-mkhomedir
+
+- name: uninstall nslcd
+  become: yes
+  yum:
+    name: "{{item}}"
+    state: absent
+  with_items:
+    - nslcd
+
+
+- name: modify ssh_config
+  become: yes
+  lineinfile:
+    dest: /etc/ssh/sshd_config
+    regexp: "{{ item.regexp }}"
+    insertafter: "^[#]+{{ item.regexp }}$"
+    line: "{{ item.line }}"
+  with_items:
+    - { regexp: "AuthorizedKeysCommand .*",     line: "AuthorizedKeysCommand /usr/libexec/openssh/ssh-ldap-wrapper" }
+    - { regexp: "AuthorizedKeysCommandUser .*", line: "AuthorizedKeysCommandUser root" }
+  notify: restart sshd
+
+- name: copy sudo-ldap.config
+  become: yes
+  template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+  with_items:
+    - {src: "ldap.conf.j2",      dest: "/etc/ssh/ldap.conf",  owner: "root", group: "root"}
+    - {src: "sudo-ldap.conf.j2", dest: "/etc/sudo-ldap.conf", owner: "root", group: "root"}
+    - {src: "pam_ldap.conf.j2",  dest: "/etc/pam_ldap.conf",  owner: "root", group: "root"}
+  notify: restart sshd
+
+- name: modify pamd.d su
+  become: yes
+  lineinfile:
+    dest: "/etc/pam.d/su"
+    regexp: "^auth[ ]+required .*$"
+    insertafter: "^[#]+auth[ ]+required .*$"
+    line: "auth           required        pam_wheel.so use_uid"
+
+- name: modify nsswitch.conf of bastilin
+  become: yes
+  lineinfile:
+    dest: "/etc/nsswitch.conf"
+    regexp: "^sudoers:.*$"
+    insertafter: "^[#]+sudoers:.*$"
+    line: "sudoers:    files"
+  when: "'bastilin' in group_names"
+
+- name: modify nsswitch.conf other than bastilin
+  become: yes
+  lineinfile:
+    dest: "/etc/nsswitch.conf"
+    regexp: "^sudoers:.*$"
+    insertafter: "^[#]+sudoers:.*$"
+    line: "sudoers:    files ldap"
+  when: "'bastilin' not in group_names"
+
+- name: authconfig set 
+  shell: authconfig --enablemkhomedir --enablesssd --enablesssdauth --enablelocauthorize --disableldap --disableldapauth --enableldaptls --update
+
+- name: copy sssd.conf
+  become: yes
+  template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  with_items:
+    - {src: "sssd.conf.j2" , dest: "/etc/sssd/sssd.conf",  owner: "root", group: "root", mode: "0600" }
+  notify: restart sshd
+
+- name: homedir start
+  service:
+    name=oddjobd
+    state=started
+    enabled=yes
+
+- name: sshd_config edit 2
+  lineinfile:
+    dest=/etc/ssh/sshd_config
+    state=present
+    regexp='PubkeyAuthentication'
+    line='PubkeyAuthentication yes'
+
+- name: sshd_config edit 3
+  lineinfile:
+    dest=/etc/ssh/sshd_config
+    state=present
+    regexp='AuthorizedKeysCommand '
+    line='AuthorizedKeysCommand /usr/bin/sss_ssh_authorizedkeys'
+
+- name: sshd_config edit 4
+  lineinfile:
+    dest=/etc/ssh/sshd_config
+    state=present
+    regexp='AuthorizedKeysCommandUser'
+    line='AuthorizedKeysCommandUser root'
+
+- name: sssd restart
+  service:
+    name=sssd
+    state=restarted
+    enabled=yes
+

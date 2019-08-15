@@ -1,0 +1,6 @@
+stage: dev
+stage_code: dev
+stage_network: 10.120.0.0/16
+
+ldap_server: 10.120.5.5
+mail_cc: test@abc.co.jp

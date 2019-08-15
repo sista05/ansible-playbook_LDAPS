@@ -1,0 +1,14 @@
+uri ldaps://{{ ldap_server }}/
+base {{ ldap_dn }}
+host {{ ldap_server }}
+
+ssl yes
+tls_cacertdir /etc/openldap/certs
+tls_checkpeer yes
+tls_reqcert never
+
+pam_filter description={{ server_group_name }}
+nss_base_passwd ou=User,{{ ldap_dn }}?sub?description={{ server_group_name }}
+nss_base_shadow ou=User,{{ ldap_dn }}?sub?description={{ server_group_name }}
+nss_base_group  ou=Group,{{ ldap_dn }}?sub?objectClass=posixGroup
+

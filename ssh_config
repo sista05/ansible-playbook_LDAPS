@@ -1,0 +1,8 @@
+Host *
+  StrictHostKeyChecking no
+  ForwardAgent yes
+
+Host ldap_server
+  User root
+  HostName 10.120.0.5
+  IdentityFile /home/ansible/.ssh/id_rsa

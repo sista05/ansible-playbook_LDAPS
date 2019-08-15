@@ -1,0 +1,9 @@
+
+
+ldap_dn: "dc=abc,dc=com"
+ldap_root_dn: "cn=Manager,{{ ldap_dn }}"
+ldap_attribute_dc: "abc"
+ldap_attribute_o: "ABC Corp."
+
+mail_from: no-reply@abc.co.jp
+stage_label: "dev"

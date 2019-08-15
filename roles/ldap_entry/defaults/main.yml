@@ -1,0 +1,6 @@
+---
+# files: roles/ldap_entry/defaults/main.yml
+
+ldap_entry_necessary_pip_modules:
+  - python-ldap
+  - pyOpenSSL

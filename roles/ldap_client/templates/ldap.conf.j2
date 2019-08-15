@@ -1,0 +1,9 @@
+uri ldaps://{{ ldap_server }}/
+base {{ ldap_dn }}
+host {{ ldap_server }}
+ssl yes
+TLS_CERTDIR /etc/openldap/certs
+TLS_REQCERT never
+
+pam_filter description={{ server_group_name }}
+

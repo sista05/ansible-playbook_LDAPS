@@ -1,0 +1,76 @@
+---
+# files: roles/ldap_entry/tasks/centos7.yml
+
+- name: Provision the groups.
+  ldap_entry:
+    state: "{{ item.state }}"
+    dn: "cn={{ item.cn }},ou=Group,{{ ldap_bind_dn }}"
+    objectClass:
+      - posixGroup
+      - top
+    attributes:
+      cn: "{{ item.cn }}"
+      gidNumber: "{{ item.gidNumber }}"
+    bind_dn: "{{ ldap_server_bind_dn }}"
+    bind_pw: "{{ ldap_root_password }}"
+  with_items: "{{ ldap_groups }}"
+
+- name: Provision the users.
+  ldap_entry:
+    state: "{{ item.state }}"
+    dn: "uid={{ item.uid }},ou=User,{{ ldap_bind_dn }}"
+    objectClass:
+      - shadowAccount
+      - posixAccount
+      - account
+      - top
+      - ldapPublicKey
+    attributes:
+      cn: "{{ item.uid }}"
+      uid: "{{ item.uid }}"
+      uidNumber: "{{ item.uidNumber }}"
+      gidNumber: "{{ item.gidNumber }}"
+      homeDirectory: "/home/{{ item.uid }}"
+      loginShell: /bin/bash
+      userPassword: "{{ user_password }}"
+      sshPublicKey: "{{ ssh_pubkey }}"
+    bind_dn: "{{ ldap_server_bind_dn }}"
+    bind_pw: '{{ ldap_root_password }}'
+  with_items: "{{ ldap_users }}"
+  register: ldap_users_provision_results
+
+## need Jinja2 v2.8
+- name: Provision the privileges.
+  ldap_attr:
+    state: exact
+    dn: "uid={{ item.uid }},ou=User,{{ ldap_bind_dn }}"
+    name: description
+    values: "{{ item.description }}"
+    bind_dn: "{{ ldap_server_bind_dn }}"
+    bind_pw: "{{ ldap_root_password }}"
+  with_items: "{{ ldap_users | selectattr('state', 'defined') | selectattr('state', 'equalto', 'present') | list }}"
+
+- name: Generate sudoers list.
+  set_fact:
+    ldap_sudoers: "{{ ldap_users | selectattr('state', 'defined') | selectattr('state', 'equalto', 'present') | selectattr('sudoer', 'defined') | selectattr('sudoer', 'equalto', true) | map(attribute='uid') | list }}"
+
+- name: Provision the wheel group.
+  ldap_attr:
+    state: exact
+    dn: "cn=wheel,ou=Group,{{ ldap_bind_dn }}"
+    name: memberUid
+    values: "{{ ldap_sudoers }}"
+    bind_dn: "{{ ldap_server_bind_dn }}"
+    bind_pw: "{{ ldap_root_password }}"
+
+- name: Set fact of ldap_gen_sshkey_users (changed)
+  set_fact:
+    ldap_gen_sshkey_users: "{{ ldap_users_provision_results.results | selectattr('changed', 'defined') | selectattr('changed', 'equalto', true) | selectattr('item.state', 'defined') | selectattr('item.state', 'equalto', 'present') | map(attribute='item') | list }}"
+
+- name: Set fact of ldap_gen_sshkey_users (forced renew)
+  set_fact:
+    ldap_gen_sshkey_users: "{{ ldap_users | selectattr('state', 'defined') | selectattr('state','equalto','present') | selectattr('sshkey_forced_renew', 'defined') | selectattr('sshkey_forced_renew', 'equalto', true) | list | union( ldap_gen_sshkey_users ) }}"
+
+- name: Generate SSH key
+  include_tasks: gen_ssh_key.yml user={{item.uid}} mail_to={{item.mail_address}} name={{item.name}}
+  with_items: "{{ ldap_gen_sshkey_users }}"

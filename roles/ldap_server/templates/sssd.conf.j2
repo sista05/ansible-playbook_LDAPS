@@ -1,0 +1,54 @@
+[sssd]
+
+debug_level = 0
+config_file_version = 2
+services = nss, sudo, pam,  ssh
+domains = default
+
+[domain/default]
+ldap_id_use_start_tls = True
+id_provider = ldap
+auth_provider = ldap
+chpass_provider = ldap
+sudo_provider = ldap
+
+ldap_uri = ldaps://{{ ldap_server }}
+ldap_search_base = {{ ldap_dn }}
+ldap_id_use_start_tls = True
+
+ldap_search_timeout = 3
+ldap_network_timeout = 3
+ldap_opt_timeout = 3
+ldap_enumeration_search_timeout = 60
+ldap_enumeration_refresh_timeout = 300
+ldap_connection_expire_timeout = 600
+
+ldap_sudo_smart_refresh_interval = 600
+ldap_sudo_full_refresh_interval = 10800
+
+entry_cache_timeout = 1200
+cache_credentials = True
+
+ldap_tls_cacertdir = /etc/openldap/certs
+ldap_tls_reqcert = never
+
+
+[nss]
+
+homedir_substring = /home
+
+entry_negative_timeout = 20
+entry_cache_nowait_percentage = 50
+
+[pam]
+
+[sudo]
+
+[autofs]
+
+[ssh]
+
+[pac]
+
+[ifp]
+

@@ -1,0 +1,6 @@
+uri ldaps://{{ ldap_server }}/
+sudoers_base ou=SUDOers,{{ldap_dn}}
+bind_timelimit 120
+host {{ ldap_server }}
+base {{ ldap_dn }}
+tls_checkpeer no

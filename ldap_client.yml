@@ -1,0 +1,7 @@
+---
+- hosts: 
+    - batch
+  vars_files:
+    - "inventories/{{ stage }}/vars/ldap_secret.yml"
+  roles:
+    - ldap_client

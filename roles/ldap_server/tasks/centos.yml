@@ -1,0 +1,468 @@
+
+  - name: Yum install
+    yum: name={{ item }} state=present
+    with_items:
+      - openldap-servers
+      - openssh-ldap
+      - gcc
+      - python-devel
+      - openldap-devel
+      - openldap-clients
+      - sssd
+      - sssd-client
+      - sssd-ldap
+      - oddjob-mkhomedir
+
+  - name: install pip 1
+    shell: curl -kL https://bootstrap.pypa.io/get-pip.py | python
+
+  - name: install pip
+    pip:
+      name: "{{ item }}"
+    with_items:
+      - python-ldap
+      - pyOpenSSL
+
+  - name: check ldap setteing
+    become: yes
+    shell: "ldapsearch -Q -LLL -Y EXTERNAL -H ldapi:/// -b olcDatabase={2}hdb,cn=config | grep olcSuffix | awk '{print $2}'"
+    changed_when: false
+    check_mode: no
+    register: tmp_ldap_dn
+    tags: ldap_server
+
+  - name: Remove /var/lib/ldap/*
+    become: yes
+    file:
+      path: "{{ item }}"
+      state: absent
+    with_items:
+    - /var/lib/ldap/
+    - /etc/openldap/slapd.d/
+    when: "( tmp_ldap_dn.stdout != ldap_dn )"
+    tags: ldap_server
+
+  - name: Create /var/lib/ldap/
+    become: yes
+    file:
+      path: /var/lib/ldap/
+      mode: 0700
+      owner: ldap
+      group: ldap
+      state: directory
+    tags: ldap_server
+
+  - name: Create /etc/openldap/slapd.d/
+    become: yes
+    file:
+      path: /etc/openldap/slapd.d/
+      mode: 0750
+      owner: ldap
+      group: ldap
+      state: directory
+    tags: ldap_server
+
+  - name: copy DB_CONFIG file
+    become: yes
+    copy:
+      remote_src: yes
+      src: /usr/share/openldap-servers/DB_CONFIG.example
+      dest: /var/lib/ldap/DB_CONFIG
+      owner: ldap
+      group: ldap
+    when: "( tmp_ldap_dn.stdout != ldap_dn )"
+    tags: ldap_server
+
+  - name: execute convert-config.sh
+    become: yes
+    shell: /usr/libexec/openldap/convert-config.sh -f /usr/share/openldap-servers/slapd.ldif -F /etc/openldap/slapd.d
+    when: "( tmp_ldap_dn.stdout != ldap_dn )"
+    tags: ldap_server
+
+  - name: SELinux Disable
+    selinux: state=disabled
+
+  - name: start slapd
+    become: yes
+    service:
+      name: slapd
+      state: restarted
+      enabled: yes
+    when: "( tmp_ldap_dn.stdout != ldap_dn )"
+    tags: ldap_server
+
+  - name: create /etc/openldap/ldif
+    become: yes
+    file:
+      path: /etc/openldap/ldif
+      state: directory
+    when: "( tmp_ldap_dn.stdout != ldap_dn )"
+    tags: ldap_server
+
+  - name: copy config file
+    become: yes
+    copy:
+      src: "{{ item.src }}"
+      dest: "{{ item.dest }}"
+      owner: "{{ item.owner | default( omit ) }}"
+      group: "{{ item.group | default( omit ) }}"
+    register: copy_ldif
+    with_items:
+      - {src: "files/sudo.ldif"   , dest: "/etc/openldap/ldif/sudo.ldif" }
+      - {src: "files/openssh.ldif", dest: "/etc/openldap/ldif/openssh.ldif" }
+      - {src: "files/mod_ssl.ldif", dest: "/etc/openldap/ldif/mod_ssl.ldif", owner: "root", group: "root" }
+    tags: ldap_server
+
+  - name: place config files
+    become: yes
+    template:
+      src: "{{ item.src }}"
+      dest: "{{ item.dest }}"
+      owner: "{{ item.owner }}"
+      group: "{{ item.group }}"
+      backup: yes
+    register: template_ldif
+    with_items:
+      - {src: "base.ldif.j2"         , dest: "/etc/openldap/ldif/base.ldif"         , owner: "root", group: "root" }
+      - {src: "sudo-nopass.ldif.j2"  , dest: "/etc/openldap/ldif/sudo-nopass.ldif"  , owner: "root", group: "root" }
+    tags: ldap_server
+
+  - name: stat schema file
+    become: yes
+    stat:
+      path: "{{ item }}"
+    register: schema_ldif
+    with_items:
+      - /etc/openldap/schema/cosine.ldif
+      - /etc/openldap/schema/inetorgperson.ldif
+      - /etc/openldap/schema/nis.ldif
+      - /etc/openldap/schema/collective.ldif
+      - /etc/openldap/schema/corba.ldif
+      - /etc/openldap/schema/duaconf.ldif
+
+  - name: find CheckSum files
+    find :
+      paths:
+        - /etc/openldap/ldif
+        - /etc/openldap/schema
+      patterns: "*.sum"
+    register: sum_files
+    when: "( tmp_ldap_dn.stdout != ldap_dn )"
+
+  - name: delete CheckSum files
+    become: yes
+    file:
+      path: "{{ item.path }}"
+      state: absent
+    with_items: "{{ sum_files.files }}"
+    when: "( tmp_ldap_dn.stdout != ldap_dn )"
+
+  - name: chrootpw
+    become: yes
+    ldap_attr:
+      dn: olcDatabase={0}config,cn=config
+      name: "{{ item.key }}"
+      values: "{{ item.value }}"
+      state: exact
+    register: chrootpw
+    with_dict:
+      olcRootPW: "{{ ldap_root_password }}"
+
+  - name: change-domain 1
+    become: yes
+    ldap_attr:
+      dn: olcDatabase={1}monitor,cn=config
+      name: "{{ item.key }}"
+      values: "{{ item.value }}"
+      state: exact
+    register: change_domain1
+    with_dict:
+      olcAccess :
+        - >-
+          {0}to * by dn.base="gidNumber=0+uidNumber=0,cn=peercred,cn=external,cn=auth"
+          read by dn.base=dc=abc,dc=com read by * none
+
+  - name: change-domain 2
+    become: yes
+    ldap_attr:
+      dn: olcDatabase={2}hdb,cn=config
+      name: "{{ item.key }}"
+      values: "{{ item.value }}"
+      state: exact
+    register: change_domain2
+    with_dict:
+      olcSuffix: "{{ ldap_dn }}"
+      olcRootDN: "{{ ldap_root_dn }}"
+      olcRootPW: "{{ ldap_root_password }}"
+
+  - name: set_fact
+    set_fact:
+      path: "{{ item.item }}"
+      checksum: "{{ item.stat.checksum }}"
+    register: schema_ldif2
+    with_items: "{{ schema_ldif.results | list }}"
+
+  - name: import schema check
+    become: yes
+    shell: cat {{ item.path }}.sum
+    register: schema_ldif_check
+    with_items: "{{ schema_ldif2.results | map(attribute='ansible_facts') | list }}"
+    changed_when: false
+    check_mode: no
+    ignore_errors: yes
+    tags: ldap_server
+
+  - name: set_fact
+    set_fact:
+      path: "{{ item.item.path }}"
+      checksum: "{{ item.item.checksum }}"
+      checksumold : "{{ item.stdout }}"
+    register: schema_ldif_check2
+    with_items: "{{ schema_ldif_check.results | list }}"
+
+  - name: import schema
+    become: yes
+    shell: ldapadd -Y EXTERNAL -H ldapi:// -f {{ item.path }} && echo {{ item.checksum }} > {{ item.path }}.sum
+    when: item.checksum != item.checksumold
+    register: import_schema
+    with_items: "{{ schema_ldif_check2.results | map(attribute='ansible_facts' ) | list }}"
+    tags: ldap_server
+
+  - name: set_fact
+    set_fact:
+      path: "{{ item.item.dest }}"
+      checksum: "{{ item.checksum }}"
+    register: copy_ldif2
+    with_items: "{{ copy_ldif.results | list }}"
+
+  - name: import ldif check
+    become: yes
+    shell: cat {{ item.path }}.sum
+    register: copy_ldif_check
+    with_items:
+      - "{{ copy_ldif2.results | map(attribute='ansible_facts') | list }}"
+    changed_when: false
+    check_mode: no
+    ignore_errors: yes
+    tags: ldap_server
+
+  - name: set_fact
+    set_fact:
+      path: "{{ item.item.path }}"
+      checksum: "{{ item.item.checksum }}"
+      checksumold : "{{ item.stdout }}"
+    register: copy_ldif_check2
+    with_items: "{{ copy_ldif_check.results | list }}"
+
+  - name: import ldif
+    become: yes
+    shell: ldapadd -Y EXTERNAL -H ldapi:// -f {{ item.path }} && echo {{ item.checksum }} > {{ item.path }}.sum
+    when: item.checksum != item.checksumold
+    register: import_ldif
+    with_items:
+      - "{{ copy_ldif_check2.results | map(attribute='ansible_facts') | list }}"
+    ignore_errors: yes
+    tags: ldap_server
+
+  # second deploy
+  - name: restart slapd
+    become: yes
+    service:
+      name: slapd
+      state: restarted
+    tags: ldap_server
+
+  - name: set_fact
+    set_fact:
+      path: "{{ item.item.dest }}"
+      checksum: "{{ item.checksum }}"
+    register: template_ldif2
+    with_items: "{{ template_ldif.results | list }}"
+
+  - name: import data check
+    become: yes
+    shell: cat {{ item.path }}.sum
+    register: template_ldif_check
+    with_items:
+      - "{{ template_ldif2.results | map(attribute='ansible_facts') | list }}"
+    changed_when: false
+    check_mode: no
+    ignore_errors: yes
+    tags: ldap_server
+
+  - name: set_fact
+    set_fact:
+      path: "{{ item.item.path }}"
+      checksum: "{{ item.item.checksum }}"
+      checksumold : "{{ item.stdout }}"
+    register: template_ldif_check2
+    with_items: "{{ template_ldif_check.results | list }}"
+
+  - name: import data
+    become: yes
+    shell: ldapadd -D {{ ldap_root_dn }} -w {{ ldap_root_password }} -f {{ item.path }} && echo {{ item.checksum }} > {{ item.path }}.sum
+    when: item.checksum != item.checksumold
+    with_items:
+      - "{{ template_ldif_check2.results | map(attribute='ansible_facts') | list }}"
+    notify: restart slapd
+    tags: ldap_server
+
+  - name: Create directory
+    become: yes
+    file:
+      path: /etc/openldap/certs/
+      owner: root
+      group: root
+      mode: 0755
+      state: directory
+
+  - name: self signed certificate
+    become: yes
+    shell: "openssl req -new -newkey rsa:2048 -sha1 -x509 -nodes -set_serial 1 -days {{ ldap_ssl_days }} -subj '{{ ldap_ssl_subject }}' -out {{ ldap_ssl_crt_file }} -keyout {{ ldap_ssl_key_file }}"
+    args:
+      creates: "{{ ldap_ssl_key_file }}"
+    notify: restart slapd
+    tags: self_signed_certificate
+
+  - name: change owner of ssl files
+    become: yes
+    file:
+      path: "{{ item.path }}"
+      owner: "{{ item.owner }}"
+      group: "{{ item.group }}"
+      mode: "{{ item.mode }}"
+    with_items:
+      - {path: "{{ ldap_ssl_crt_file }}", owner: "ldap", group: "ldap", mode: "0644"}
+      - {path: "{{ ldap_ssl_key_file }}", owner: "ldap", group: "ldap", mode: "0400"}
+    notify: restart slapd
+    tags: self_signed_certificate
+
+  - name: copy ca-bundle.crt
+    become: yes
+    copy:
+      remote_src: yes
+      src: /etc/pki/tls/certs/ca-bundle.crt
+      dest: /etc/openldap/certs/ca-bundle.crt
+      owner: "ldap"
+      group: "ldap"
+      mode: 0444
+    notify: restart slapd
+    tags: self_signed_certificate
+
+  - name: import ldif
+    become: yes
+    shell: ldapadd -Y EXTERNAL -H ldapi:// -f {{ item.path }} && echo {{ item.checksum }} > {{ item.path }}.sum
+    when: item.checksum != item.checksumold
+    register: import_ldif
+    with_items:
+      - "{{ copy_ldif_check2.results | map(attribute='ansible_facts') | list }}"
+    ignore_errors: yes
+    tags: ldap_server
+
+  - name: add slapd protocol ldaps:///
+    become: yes
+    replace:
+      dest: "/etc/sysconfig/slapd"
+      regexp:  "^(SLAPD_URLS=.*)$"
+      replace: "SLAPD_URLS=\"ldapi:/// ldap:/// ldaps:///\""
+    notify: restart slapd
+    tags: self_signed_certificate
+
+  - name: create slapd override settings directory
+    become: yes
+    file:
+      path: "/etc/systemd/system/slapd.service.d"
+      state: directory
+      owner: root
+      group: root
+      mode: 0755
+    notify: restart slapd
+    tags: self_signed_certificate
+
+  - name: place config ldap.conf
+    become: yes
+    template:
+      src: "{{ item.src }}"
+      dest: "{{ item.dest }}"
+      owner: "{{ item.owner }}"
+      group: "{{ item.group }}"
+      mode: "{{ item.mode  }}"
+    with_items:
+      - {src: "ldap.conf.j2" , dest: "/etc/openldap/ldap.conf" , owner: "root", group: "root" , mode: "0644" }
+
+  - name: slapd override settings
+    become: yes
+    copy:
+      src: "files/slapd.override.conf"
+      dest: "/etc/systemd/system/slapd.service.d/override.conf"
+      owner: root
+      group: root
+      mode: 0644
+      backup: yes
+    notify: restart slapd
+    tags: self_signed_certificate
+
+####set sssd and any config####
+
+  - name: authconfig set 1
+    shell: authconfig --enablesssd --enablesssdauth --enablelocauthorize --disableldap --disableldapauth --disableldaptls --update
+
+  - name: place config sssd.conf
+    become: yes
+    template:
+      src: "{{ item.src }}"
+      dest: "{{ item.dest }}"
+      owner: "{{ item.owner }}"
+      group: "{{ item.group }}"
+      mode: "{{ item.mode  }}"
+    with_items:
+      - {src: "sssd.conf.j2" , dest: "/etc/sssd/sssd.conf" , owner: "root", group: "root" , mode: "0600" }
+
+  - name: homedir start
+    service:
+      name=oddjobd
+      state=started
+      enabled=yes
+
+  - name: authconfig set 2
+    shell: authconfig --enablemkhomedir --update
+
+  - name: sshd_config edit 2
+    lineinfile:
+      dest=/etc/ssh/sshd_config
+      state=present
+      regexp='PubkeyAuthentication'
+      line='PubkeyAuthentication yes'
+
+  - name: sshd_config edit 3
+    lineinfile:
+      dest=/etc/ssh/sshd_config
+      state=present
+      regexp='AuthorizedKeysCommand '
+      line='AuthorizedKeysCommand /usr/bin/sss_ssh_authorizedkeys'
+
+  - name: sshd_config edit 4
+    lineinfile:
+      dest=/etc/ssh/sshd_config
+      state=present
+      regexp='AuthorizedKeysCommandUser'
+      line='AuthorizedKeysCommandUser root'
+
+  - name: sssd restart
+    service:
+      name=sssd
+      state=restarted
+      enabled=yes
+
+  - name: sshd restart
+    service:
+      name=sshd
+      state=restarted
+      enabled=yes
+
+  - name: edit sudoers
+    lineinfile:
+      dest=/etc/sudoers
+      state=present
+      line='%ldap  ALL=(ALL)       ALL'
+      insertafter='%wheel'

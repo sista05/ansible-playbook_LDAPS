@@ -1,0 +1,63 @@
+#---
+## inventories/development/group_vars/ldap_server.yml
+#
+ldap_groups:
+  - {state: present, gidNumber: 10000, cn: aaa}
+  - {state: present, gidNumber: 10100, cn: bbb}
+
+# aaa
+ldap_users:
+ - uid: test1
+   name: test1
+   mail_address: test1@aaa.co.jp
+   state: present
+   uidNumber: 10001
+   gidNumber: 10000
+   sudoer: yes
+   sshkey_forced_renew: no
+   description:
+     - bastion
+     - ldap
+     - nat
+     - app01
+     - app02
+  - uid: test2
+    name: test2
+    mail_address: test2@aaa.co.jp
+    state: present
+    uidNumber: 10002
+    gidNumber: 10000
+    sudoer: yes
+    sshkey_forced_renew: no
+    description:
+      - bastion
+      - ldap
+      - nas
+      - app-01
+      - app-02
+
+  # bbb
+  - uid: test1
+    name: test1
+    mail_address: test1@bbb.co.jp
+    state: present
+    uidNumber: 10101
+    gidNumber: 10100
+    sudoer: yes
+    sshkey_forced_renew: no
+    description:
+      - bastion
+      - app-01
+      - app-02
+  - uid: test2
+    name: test2
+    mail_address: test2@bbb.co.jp
+    state: present
+    uidNumber: 10102
+    gidNumber: 10100
+    sudoer: yes
+    sshkey_forced_renew: no
+    description:
+      - bastion
+      - app-01
+      - app-02

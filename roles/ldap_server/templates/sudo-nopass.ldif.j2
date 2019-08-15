@@ -1,0 +1,37 @@
+# sudo Group
+dn: ou=SUDOers,{{ldap_dn}}
+objectClass: organizationalUnit
+ou: SUDOers
+
+# sudo defaults
+dn: cn=defaults,ou=SUDOers,{{ldap_dn}}
+objectclass: top
+objectclass: sudoRole
+cn: defaults
+sudoOption: !authenticate
+sudoOption: !lecture
+sudoOption: !root_sudo
+sudoOption: log_host
+sudoOption: log_year
+sudoOption: syslog=local3
+sudoOption: logfile=/var/log/sudo.log
+sudoOption: ignore_dot
+sudoOption: ignore_local_sudoers
+sudoOption: timestamp_timeout=0
+
+# %wheel
+dn: cn=%wheel,ou=SUDOers,{{ldap_dn}}
+objectClass: top
+objectClass: sudoRole
+cn: %wheel
+sudoUser: %wheel
+sudoHost: ALL
+sudoCommand: ALL
+
+# wheelグループ
+dn: cn=wheel,ou=Group,{{ldap_dn}}
+objectClass: posixGroup
+objectClass: top
+gidNumber: 9999
+cn: wheel
+memberUid:

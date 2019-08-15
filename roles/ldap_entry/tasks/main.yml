@@ -1,0 +1,5 @@
+---
+# files: roles/ldap_entry/tasks/main.yml
+
+- import_tasks: centos.yml
+  when: ansible_distribution == "CentOS" and ansible_distribution_major_version == "7"

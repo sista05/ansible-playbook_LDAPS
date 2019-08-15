@@ -1,0 +1,12 @@
+[bastion]
+bastion-01  ansible_host=10.120.5.4
+
+[ldap_server]
+ldap  ansible_host=10.120.5.5 
+
+[app]
+app-01  ansible_host=10.120.128.10
+app-02  ansible_host=10.120.129.10
+
+[batch]
+batch-01  ansible_host=10.120.10.10

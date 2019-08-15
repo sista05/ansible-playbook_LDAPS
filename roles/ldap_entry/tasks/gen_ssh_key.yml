@@ -1,0 +1,114 @@
+---
+# files: roles/ldap_entry/tasks/gen_ssh_key.yml
+
+- name: Create temporary directory for SSH key.
+  tempfile:
+    state: directory
+    prefix: ansible-tmp-
+  register: ldap_sshkey_tempdir
+
+- name: Generate pass-phrase.
+ shell: "cat /dev/urandom | tr -dc '[:graph:]' | tr \"'\" \".\" | head -c 12"
+ register: ldap_passphrase
+
+- name: Output pass phrase.
+ lineinfile:
+   state: present
+   path: "{{ ldap_sshkey_tempdir.path }}/{{ stage_code }}-{{ user }}_passphrase.txt"
+   line: "{{ ldap_passphrase.stdout }}"
+   create: yes
+
+- name: Generate private key.
+  openssl_privatekey:
+    path: "{{ ldap_sshkey_tempdir.path }}/{{ stage_code }}-{{ user }}_id_rsa"
+   passphrase: "{{ ldap_passphrase.stdout }}"
+   cipher: AES256
+    type: RSA
+    size: 2048
+
+- name: Generate public key
+  openssl_publickey:
+    path: "{{ ldap_sshkey_tempdir.path }}/{{ stage_code }}-{{ user }}_id_rsa.pub"
+    privatekey_path: "{{ ldap_sshkey_tempdir.path }}/{{ stage_code }}-{{ user }}_id_rsa"
+   privatekey_passphrase: "{{ ldap_passphrase.stdout }}"
+    format: OpenSSH
+
+- name: stdout sshPublickey
+  shell: cat {{ ldap_sshkey_tempdir.path }}/{{ stage_code }}-{{ user }}_id_rsa.pub
+  register: pubkey
+
+- name: Provision the sshPublicKey
+  ldap_attr:
+    state: exact
+    dn: "uid={{ user }},ou=User,{{ ldap_bind_dn }}"
+    name: sshPublicKey
+    values: "{{ lookup('file', ldap_sshkey_tempdir.path + '/' + stage_code + '-'+ user + '_id_rsa.pub') }}"
+    values: "{{ pubkey.stdout }}"
+    bind_dn: "{{ ldap_server_bind_dn }}"
+    bind_pw: "{{ ldap_root_password }}"
+
+- name: Remove sshPublicKey
+  file:
+    state: absent
+    path: "{{ ldap_sshkey_tempdir.path }}/{{ stage_code }}-{{ user }}_id_rsa.pub"
+
+- name: Generate zip password.
+  shell: "cat /dev/urandom | tr -dc '[:graph:]' | tr \"'\" \".\" | head -c 12"
+  register: ldap_zip_password
+
+- name: install zip
+  yum: name=zip state=present
+
+- name: Archive SSH key
+  shell: "zip -e -j --password='{{ ldap_zip_password.stdout }}' {{ ldap_sshkey_tempdir.path }}/{{ stage_code }}-{{ user }}.zip {{ ldap_sshkey_tempdir.path }}/*"
+
+- name: Sending SSH key file
+  mail:
+    subject: "Sending SSH private key "
+    body: |
+      Dear {{ name }}.
+
+      Dear {{ name }}.
+      I'm Jack of Engineering Department at ABC corporation.
+
+      I generate your own ssh key pair and attach the private key to an email.
+      I'll send you zip file password later.
+
+      To： {{ user }}
+
+      ----------
+      Please contact the receptionist below for any questions.
+      ABC Corporation.
+    from: "ABC Corporation <{{ mail_from }}>"
+    to: "{{ mail_to }}"
+    cc: "{{ mail_cc }}"
+    attach: "{{ ldap_sshkey_tempdir.path }}/{{ stage_code }}-{{ user }}.zip"
+
+- name: Sending SSH key passphrase
+  mail:
+    subject: "Sending SSH key passphrase"
+    body: |
+      Dear {{ name }}.
+
+      Dear {{ name }}.
+      I'm Jack of Engineering Department at ABC corporation.
+
+      Please use the following password to decrypt and open the attached file.
+
+      To： {{ user }}
+
+      ==============
+      Password: {{ ldap_zip_password.stdout }}
+      ==============
+
+      ----------
+      Please contact the receptionist below for any questions.
+      ABC Corporation.
+    from: "ABC Corporation <{{ mail_from }}>"
+    to: "{{ mail_to }}"
+    cc: "{{ mail_cc }}"
+
+- name: Remove temporary directory
+  file:
+    state: absent
+    path: "{{ ldap_sshkey_tempdir.path }}"

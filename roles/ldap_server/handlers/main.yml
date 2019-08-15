@@ -1,0 +1,9 @@
+---
+# file: roles/ldap_server/handlers/main.yml
+
+- name: restart slapd
+  become: yes
+  systemd:
+    name: slapd
+    state: restarted
+    daemon_reload: yes

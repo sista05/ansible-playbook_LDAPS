@@ -1,0 +1,21 @@
+# Domain
+dn: {{ldap_dn}}
+objectClass: dcObject
+objectClass: organization
+dc: {{ ldap_attribute_dc }}
+o: {{ ldap_attribute_o }}
+
+# Manager
+dn: cn=Manager,{{ldap_dn}}
+objectClass: organizationalRole
+cn: Manager
+
+# User
+dn: ou=User,{{ldap_dn}}
+objectClass: organizationalUnit
+ou: User
+
+# Group
+dn: ou=Group,{{ldap_dn}}
+objectClass: organizationalUnit
+ou: Group

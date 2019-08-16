@@ -41,17 +41,16 @@ Some values - passwords, credentials - are sensitive and should never be submitt
 ### Run the playbook
 
 - As follows.
-```
+
         ansible-playbook -i inventories/<institution> ldap_server.yml
         ansible-playbook -i inventories/<institution> ldap_client.yml
-```
+
 
 ### Open Ports on Firewall
 
 - The following ports need to be in order for LDAP/S to work properly:
-```
-TCP 636
-```
+
+        TCP 636
 
 ## TODO
 

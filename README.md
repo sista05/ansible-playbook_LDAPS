@@ -6,8 +6,8 @@ Ansible Playbook for an OpenLDAP server and client on CentOS
 
 * Clone the repository, replace <institution> with the actual name of your institution
 
-        git clone  https://github.com/ubuntunet/unIDa_LDAP.git <institution>-ldap
-        cd <institution>-ldap
+        git clone  https://github.com/ubuntunet/ansible-playbook_LDAPS.git
+        cd ansible-playbook_LDAPS
 
 ### Inventory File
 
@@ -43,45 +43,15 @@ There are many ways to create random passwords/passphrases/salt, I prefer to use
 
 ### Run the playbook
 
-        ansible-playbook -i inventories/<institution> ldap.yml
+```
+        ansible-playbook -i inventories/<institution> ldap_server.yml
+        ansible-playbook -i inventories/<institution> ldap_client.yml
 
-
+```
 
 ### Open Ports on Firewall
 
 The following ports need to be in order for LDAP/S to work properly:
 ```
-TCP 389
 TCP 636
-```
-
-### Deploy locally with Vagrant
-
-If you want to try it out locally, and you have Vagrant/Virtualbox installed, the following command will run the playbook using the development inventory/variabels.
-
-        vagrant up --provision
-
-
-
-----
-
-
-## Activate LDAP Account Management (LAM)
-
-LAM is a webfront end for LDAP with a rich feature set (https://www.ldap-account-manager.org/)
-
-* Enable the 'lam' role by uncommenting it in ldap.yml
-* (Re)Play the playbook
-* Go to https://{{ fqdn}}
-
-
-
-## Trouble Shooting
-
-If you changed your rootpw, you need to remove the slapd service on the server manually for the new rootpw to be picked up. This has also helped me in other hopeless situations.
-
-```
-sudo aptitude purge slapd
-sudo rm /etc/ldap/rootdn_created
-sudo rm /root/.entriesadded
 ```
